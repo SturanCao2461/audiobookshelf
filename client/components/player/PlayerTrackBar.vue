@@ -9,9 +9,7 @@
       <div v-if="loading" class="h-full w-1/4 absolute left-0 top-0 loadingTrack pointer-events-none bg-white/25" />
     </div>
     <div class="w-full h-2 relative overflow-hidden" :class="useChapterTrack ? 'opacity-0' : ''">
-      <template v-for="(tick, index) in chapterTicks">
-        <div :key="index" :style="{ left: tick.left + 'px' }" class="absolute top-0 w-px bg-white/30 h-1 pointer-events-none" />
-      </template>
+      <div v-for="(tick, index) in chapterTicks" :key="index" :style="{ left: tick.left + 'px' }" class="absolute top-0 h-full flex items-center justify-center" />
     </div>
 
     <!-- Hover timestamp -->
