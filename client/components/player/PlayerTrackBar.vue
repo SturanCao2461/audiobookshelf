@@ -1,5 +1,9 @@
 <template>
   <div class="relative">
+    <div style="position: fixed; top: 8px; left: 8px; z-index: 2147483647; background: #ff00ff; color: #000; padding: 6px 10px; font-weight: 700">TRACKBAR DEBUG!!!!!</div>
+    <!-- Slider overlay -->
+    <input type="range" class="progress-slider" :min="0" :max="duration > 0 ? duration : 1" step="any" :value="currentTime" aria-label="Seek" @input="onSliderInput" @mousemove="mousemoveTrack" @mouseleave="mouseleaveTrack" />
+
     <!-- Track -->
     <div ref="track" class="w-full h-2 bg-gray-700 relative cursor-pointer transform duration-100 hover:scale-y-125 overflow-hidden" @mousemove="mousemoveTrack" @mouseleave="mouseleaveTrack" @click.stop="clickTrack">
       <div ref="readyTrack" class="h-full bg-gray-600 absolute top-0 left-0 pointer-events-none" />
@@ -9,7 +13,9 @@
       <div v-if="loading" class="h-full w-1/4 absolute left-0 top-0 loadingTrack pointer-events-none bg-white/25" />
     </div>
     <div class="w-full h-2 relative overflow-hidden" :class="useChapterTrack ? 'opacity-0' : ''">
-      <div v-for="(tick, index) in chapterTicks" :key="index" :style="{ left: tick.left + 'px' }" class="absolute top-0 h-full flex items-center justify-center" />
+      <template v-for="(tick, index) in chapterTicks">
+        <div :key="index" :style="{ left: tick.left + 'px' }" class="absolute top-0 w-px bg-white/30 h-1 pointer-events-none" />
+      </template>
     </div>
 
     <!-- Hover timestamp -->
@@ -212,6 +218,13 @@ export default {
       this.setChapterTicks()
       this.updatePlayedTrackWidth()
       this.updateBufferTrack()
+    },
+    onSliderInput(e) {
+      const newTime = Number(e.target.value)
+      if (!Number.isNaN(newTime)) {
+        this.setCurrentTime(newTime)
+        this.$emit('seek', newTime)
+      }
     }
   },
   mounted() {
@@ -224,3 +237,50 @@ export default {
   }
 }
 </script>
+
+<style>
+.progress-slider {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: -6px; /* 看不到的话先改成 top: 0 再微调 */
+  height: 24px;
+
+  z-index: 9999; /* Track 上用了 transform，会创建新层叠上下文，所以这里要很高 */
+  background: transparent;
+  cursor: pointer;
+
+  -webkit-appearance: none;
+  appearance: none;
+}
+
+/* 轨道透明，露出自定义灰色/已播放条 */
+.progress-slider::-webkit-slider-runnable-track {
+  height: 2px;
+  background: transparent;
+  border: none;
+}
+.progress-slider::-moz-range-track {
+  height: 2px;
+  background: transparent;
+  border: none;
+}
+
+/* 拇指可见（圆点） */
+.progress-slider::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  width: 14px;
+  height: 14px;
+  margin-top: -6px; /* 让拇指垂直居中对齐2px轨道 */
+  border-radius: 50%;
+  background: #fff;
+  border: 2px solid #e5e7eb; /* 近似 Tailwind gray-200 */
+}
+.progress-slider::-moz-range-thumb {
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: #fff;
+  border: 2px solid #e5e7eb;
+}
+</style>
