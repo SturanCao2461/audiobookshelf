@@ -51,7 +51,7 @@
 
       <div class="flex flex-wrap mt-2 -mx-1">
         <div class="w-full md:w-1/4 px-1">
-          <ui-text-input-with-label ref="publisherInput" v-model="details.publisher" :label="$strings.LabelPublisher" trim-whitespace @input="handleInputChange" />
+          <ui-multi-select ref="publisherSelect" v-model="publisherSelection" :label="$strings.LabelPublisher" :items="publishers" :taggable="true" @tag="addPublisher" @input="handleInputChange" />
         </div>
         <div class="w-1/2 md:w-1/4 px-1 mt-2 md:mt-0">
           <ui-text-input-with-label ref="languageInput" v-model="details.language" :label="$strings.LabelLanguage" trim-whitespace @input="handleInputChange" />
@@ -129,6 +129,22 @@ export default {
     },
     filterData() {
       return this.$store.state.libraries.filterData || {}
+    },
+    publishers() {
+      return this.filterData.publishers || []
+    },
+    publisherSelection: {
+      get() {
+        return this.details.publisher ? [this.details.publisher] : []
+      },
+      set(val) {
+        if (Array.isArray(val)) {
+          this.details.publisher = val.length ? val[0] : null
+        } else {
+          this.details.publisher = val || null
+        }
+        this.handleInputChange
+      }
     }
   },
   methods: {
@@ -289,6 +305,13 @@ export default {
     },
     submitForm() {
       this.$emit('submit')
+    },
+    addPublisher(newName) {
+      if (!this.publishers.includes(newName)) {
+        this.publishers.push(newName)
+      }
+      this.details.publisher = newName
+      this.handleInputChange()
     }
   },
   mounted() {}
