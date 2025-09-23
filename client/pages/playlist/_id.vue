@@ -19,6 +19,32 @@
               {{ streaming ? $strings.ButtonPlaying : $strings.ButtonPlayAll }}
             </ui-btn>
 
+            <!-- Sort (dark-grey themed custom select) -->
+            <div ref="sortWrap" class="relative h-9 ml-2">
+              <button
+                ref="sortBtn"
+                type="button"
+                class="h-9 w-36 sm:w-44 md:w-48 pl-3 pr-9 rounded-md border border-white/10 bg-[#2b2b2b] text-gray-100 hover:bg-[#363636] focus:outline-none focus:ring-2 focus:ring-[#6aa0ff80] focus:border-white/20 transition-colors flex items-center justify-between"
+                @click="isSortOpen = !isSortOpen"
+                @keydown.enter.prevent="isSortOpen = !isSortOpen"
+                @keydown.space.prevent="isSortOpen = !isSortOpen"
+                @keydown.esc.prevent="isSortOpen = false"
+                aria-haspopup="listbox"
+                :aria-expanded="isSortOpen ? 'true' : 'false'"
+              >
+                <span class="truncate text-sm">{{ sortLabel }}</span>
+                <span class="material-symbols text-base text-gray-300">expand_more</span>
+              </button>
+
+              <!-- dragdown -->
+              <div v-show="isSortOpen" class="absolute z-20 mt-1 w-36 sm:w-44 md:w-48 bg-[#2b2b2b] text-gray-100 border border-white/10 rounded-md shadow-lg ring-1 ring-black/5 max-h-80 overflow-auto" role="listbox">
+                <div v-for="it in sortItems" :key="it.value" role="option" :aria-selected="it.value === sortOption ? 'true' : 'false'" @click="setSort(it.value)" class="px-3 py-2 text-sm cursor-pointer select-none flex items-center justify-between" :class="it.value === sortOption ? 'bg-[#363636] text-yellow-400' : 'text-gray-200 hover:bg-[#3a3a3a] hover:text-white'">
+                  <span class="truncate">{{ it.text }}</span>
+                  <span v-if="it.value === sortOption" class="material-symbols text-yellow-400">check</span>
+                </div>
+              </div>
+            </div>
+
             <ui-icon-btn icon="edit" class="mx-0.5" @click="editClick" />
 
             <ui-icon-btn icon="delete" class="mx-0.5" @click="removeClick" />
@@ -28,7 +54,7 @@
             <p class="text-base text-gray-100">{{ description }}</p>
           </div>
 
-          <tables-playlist-items-table :items="playlistItems" :playlist-id="playlistId" />
+          <tables-playlist-items-table :items="sortedItems" :playlist-id="playlistId" />
         </div>
       </div>
     </div>
@@ -64,7 +90,19 @@ export default {
   },
   data() {
     return {
-      processingRemove: false
+      processingRemove: false,
+      sortOption: 'added_desc',
+      isSortOpen: false,
+      sortItems: [
+        { text: 'Added ↓', value: 'added_desc' },
+        { text: 'Added ↑', value: 'added_asc' },
+        { text: 'Title A→Z', value: 'title_asc' },
+        { text: 'Title Z→A', value: 'title_desc' },
+        { text: 'Author A→Z', value: 'author_asc' },
+        { text: 'Author Z→A', value: 'author_desc' },
+        { text: 'Read First', value: 'read_first' },
+        { text: 'Unread First', value: 'unread_first' }
+      ]
     }
   },
   computed: {
@@ -102,6 +140,99 @@ export default {
     },
     userCanDelete() {
       return this.$store.getters['user/getUserCanDelete']
+    },
+    baseItems() {
+      if (this.filteredItems) return this.filteredItems
+      return this.playlist && this.playlist.items ? this.playlist.items : []
+    },
+    sortLabel() {
+      const found = this.sortItems.find((s) => s.value === this.sortOption)
+      return found ? found.text : ''
+    },
+
+    // 2) ✅ 排序后的最终列表：绑定给子表格组件
+    sortedItems() {
+      // 稳定排序：把原始 index 带入作为兜底
+      const withIdx = this.baseItems.map((it, idx) => ({ it, idx }))
+
+      const getTitle = (it) => (it.episode ? it.episode.title || '' : it.libraryItem?.media?.metadata?.title || '')
+
+      const getAuthorKey = (it) => {
+        if (it.episode) return '' // 剧集没有作者就返回空串
+        const authors = it.libraryItem?.media?.metadata?.authors || []
+        // authors 是对象数组 { id, name }，用 name 拼接做排序键
+        return authors.map((a) => a?.name || '').join(', ')
+      }
+
+      const getIsFinished = (it) => {
+        const libraryItemId = it.libraryItem?.id
+        const episodeId = it.episode ? it.episode.id : null
+        const prog = this.$store.getters['user/getUserMediaProgress'](libraryItemId, episodeId)
+        return !!(prog && prog.isFinished)
+      }
+
+      const getAdded = (it, idx) => {
+        // 若后端有时间字段（addedAt/createdAt），优先用；否则用原始顺序 idx 当“添加序”
+        return it.addedAt || it.createdAt || idx
+      }
+
+      const cmpStr = (a, b) => a.localeCompare(b, undefined, { sensitivity: 'base' })
+      const cmpBool = (a, b) => (a === b ? 0 : a ? -1 : 1) // true 在前
+      const byIdx = (a, b) => a.idx - b.idx // 稳定性兜底
+
+      switch (this.sortOption) {
+        case 'title_asc':
+          withIdx.sort((A, B) => cmpStr(getTitle(A.it), getTitle(B.it)) || byIdx(A, B))
+          break
+        case 'title_desc':
+          withIdx.sort((A, B) => cmpStr(getTitle(B.it), getTitle(A.it)) || byIdx(A, B))
+          break
+        case 'author_asc':
+          withIdx.sort((A, B) => cmpStr(getAuthorKey(A.it), getAuthorKey(B.it)) || byIdx(A, B))
+          break
+        case 'author_desc':
+          withIdx.sort((A, B) => cmpStr(getAuthorKey(B.it), getAuthorKey(A.it)) || byIdx(A, B))
+          break
+        case 'added_asc':
+          withIdx.sort((A, B) => {
+            const a = getAdded(A.it, A.idx)
+            const b = getAdded(B.it, B.idx)
+            // 日期字符串就转 Date，比数字就直接比
+            const va = isNaN(+a) ? +new Date(a) : +a
+            const vb = isNaN(+b) ? +new Date(b) : +b
+            return va - vb || byIdx(A, B)
+          })
+          break
+        case 'added_desc':
+          withIdx.sort((A, B) => {
+            const a = getAdded(A.it, A.idx)
+            const b = getAdded(B.it, B.idx)
+            const va = isNaN(+a) ? +new Date(a) : +a
+            const vb = isNaN(+b) ? +new Date(b) : +b
+            return vb - va || byIdx(A, B)
+          })
+          break
+        case 'read_first':
+          withIdx.sort((A, B) => {
+            const da = getIsFinished(A.it)
+            const db = getIsFinished(B.it)
+            return cmpBool(da, db) || byIdx(A, B)
+          })
+          break
+        case 'unread_first':
+          withIdx.sort((A, B) => {
+            const da = getIsFinished(A.it)
+            const db = getIsFinished(B.it)
+            // 未读优先：把上面的结果取反
+            return cmpBool(db, da) || byIdx(A, B)
+          })
+          break
+        default:
+          // fallback：不排序，保持原顺序
+          break
+      }
+
+      return withIdx.map((x) => x.it)
     }
   },
   methods: {
@@ -134,6 +265,17 @@ export default {
         .finally(() => {
           this.processingRemove = false
         })
+    },
+    setSort(value) {
+      this.sortOption = value
+      this.isSortOpen = false
+      this.$nextTick(() => this.$refs.sortBtn && this.$refs.sortBtn.focus())
+    },
+    onDocClick(e) {
+      const el = this.$refs.sortWrap
+      if (this.isSortOpen && el && !el.contains(e.target)) {
+        this.isSortOpen = false
+      }
     },
     clickPlay() {
       const queueItems = []
@@ -191,7 +333,11 @@ export default {
       }
     }
   },
-  mounted() {},
-  beforeDestroy() {}
+  mounted() {
+    document.addEventListener('click', this.onDocClick, { capture: true })
+  },
+  beforeDestroy() {
+    document.removeEventListener('click', this.onDocClick, { capture: true })
+  }
 }
 </script>
